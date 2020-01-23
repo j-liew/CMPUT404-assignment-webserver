@@ -34,41 +34,48 @@ class MyWebServer(socketserver.BaseRequestHandler):
         #print ("Got a request of: %s\n" % self.data)
         request = self.data.decode().split()
 
-        if len(request) > 0:
-            method = request[0]
-            requestPath = request[1]
-        else:
+        # ignore any empty requests
+        if len(request) < 1:
             return
-            
-        basePath = os.getcwd() + '/www' # www folder path
-        
-        # disallow relative pathnames
-        if '..' in requestPath.split('/'):
+
+        method = request[0]
+        requestPath = request[1]
+
+        # only accept GET requests
+        if method != 'GET':
+            self.sendMethodNotAllowed()
+            return
+
+        # www folder path
+        basePath = os.getcwd() + '/www' 
+
+        # verify that client is requesting from www folder
+        requestAbsPath = os.path.abspath(basePath + requestPath)
+        if requestAbsPath[:len(basePath)] != basePath:
             self.sendNotFound()
-        else:
-            if method == 'GET':
-                while True:
-                    try:
-                        # open requested file
-                        path = basePath + requestPath
-                        f = open(path, 'r')
-                        fileType = requestPath.split('.')[-1]
-                        fileSize = os.path.getsize(path)
-                        self.sendOk(f, fileType, fileSize)
-                    except (FileNotFoundError, NotADirectoryError):
-                        self.sendNotFound()
-                    except IsADirectoryError:
-                        # serve default page of directory
-                        if requestPath[-1] == '/':
-                            requestPath += 'index.html'
-                            continue
-                        # otherwise, use a redirect to correct the path ending
-                        else:
-                            newLocation = 'http://127.0.0.1:8080' + requestPath + '/'
-                            self.sendRedirect(newLocation)
-                    break
-            else:
-                self.sendMethodNotAllowed()
+            return
+        
+        # process request
+        while True:
+            try:
+                # open requested file
+                path = basePath + requestPath                    
+                f = open(path, 'r')
+                fileType = requestPath.split('.')[-1]
+                fileSize = os.path.getsize(path)
+                self.sendOk(f, fileType, fileSize)
+            except (FileNotFoundError, NotADirectoryError):
+                self.sendNotFound()
+            except IsADirectoryError:
+                # serve default page of directory
+                if requestPath[-1] == '/':
+                    requestPath += 'index.html'
+                    continue
+                # otherwise, use a redirect to correct the path ending
+                else:
+                    newLocation = 'http://127.0.0.1:8080' + requestPath + '/'
+                    self.sendRedirect(newLocation)
+            break
 
     def sendOk(self, fileHandle, fileType, fileSize):
         content = fileHandle.read()
