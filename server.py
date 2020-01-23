@@ -1,6 +1,6 @@
 #  coding: utf-8 
 import socketserver
-
+import os
 # Copyright 2013 Abram Hindle, Eddie Antonio Santos
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,8 +31,84 @@ class MyWebServer(socketserver.BaseRequestHandler):
     
     def handle(self):
         self.data = self.request.recv(1024).strip()
-        print ("Got a request of: %s\n" % self.data)
-        self.request.sendall(bytearray("OK",'utf-8'))
+        #print ("Got a request of: %s\n" % self.data)
+        request = self.data.decode().split()
+
+        if len(request) > 0:
+            method = request[0]
+            requestPath = request[1]
+        else:
+            return
+            
+        basePath = os.getcwd() + '/www' # www folder path
+        
+        # disallow relative pathnames
+        if '..' in requestPath.split('/'):
+            self.sendNotFound()
+        else:
+            if method == 'GET':
+                while True:
+                    try:
+                        # open requested file
+                        path = basePath + requestPath
+                        f = open(path, 'r')
+                        fileType = requestPath.split('.')[-1]
+                        fileSize = os.path.getsize(path)
+                        self.sendOk(f, fileType, fileSize)
+                    except (FileNotFoundError, NotADirectoryError):
+                        self.sendNotFound()
+                    except IsADirectoryError:
+                        # serve default page of directory
+                        if requestPath[-1] == '/':
+                            requestPath += 'index.html'
+                            continue
+                        # otherwise, use a redirect to correct the path ending
+                        else:
+                            newLocation = 'http://127.0.0.1:8080' + requestPath + '/'
+                            self.sendRedirect(newLocation)
+                    break
+            else:
+                self.sendMethodNotAllowed()
+
+    def sendOk(self, fileHandle, fileType, fileSize):
+        content = fileHandle.read()
+        status = 'HTTP/1.1 200 OK\r\n'
+        contentType = ''
+        if fileType == 'html':
+            contentType = 'Content-Type: text/html\r\n'
+        elif fileType == 'css':
+            contentType = 'Content-Type: text/css\r\n'
+        contentLength = 'Content-Length: ' + str(fileSize) + '\r\n'
+        headerEnd = '\r\n'
+        response = status + contentType + contentLength + headerEnd + content
+        self.request.sendall(bytes(response, 'utf-8'))
+
+    def sendRedirect(self, newLocation):
+        status = 'HTTP/1.1 301 Moved Permanently\r\n'
+        location = 'Location: ' + newLocation + '\r\n'
+        headerEnd = '\r\n'
+        response = status + location + headerEnd
+        self.request.sendall(bytes(response, 'utf-8'))
+
+    def sendNotFound(self):
+        content = "<h1>404 Not Found</h1>\n"
+        status = 'HTTP/1.1 404 Not Found\r\n'
+        contentType = 'Content-Type: text/html\r\n'
+        contentLength = 'Content-Length: ' + str(len(bytes(content, 'utf-8'))) + '\r\n'
+        headerEnd = '\r\n'
+        response = status + contentType + contentLength + headerEnd + content
+        self.request.sendall(bytes(response, 'utf-8'))
+
+    def sendMethodNotAllowed(self):
+        content = '<h1>405 Method Not Allowed</h1>\n'
+        status = 'HTTP/1.1 405 Method Not Allowed\r\n'
+        allow = 'Allow: GET\r\n'
+        contentType = 'Content-Type: text/html\r\n'
+        contentLength = 'Content-Length: ' + str(len(bytes(content, 'utf-8'))) + '\r\n'
+        headerEnd = '\r\n'
+        response = status + allow + contentType + headerEnd + content
+        self.request.sendall(bytes(response, 'utf-8'))
+
 
 if __name__ == "__main__":
     HOST, PORT = "localhost", 8080
